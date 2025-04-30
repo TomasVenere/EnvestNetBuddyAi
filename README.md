@@ -79,3 +79,4 @@ If you're using **Visual Studio Code** or **Visual Studio**, open the project an
 - **Separate Chat Logic into Its Own Service**: Move the chat handling logic into a dedicated service to follow the separation of concerns principle.
 - **Implement LLama3**: Integrate LLama3 for enhanced output management and bot response handling. This will allow for smarter, more accurate, and context-aware responses.
 - **Fix ConfluenceService**: Ensure the `ConfluenceService` works properly with the current Confluence setup, including fetching the necessary data and handling errors gracefully.
+- **Account Info**: Pulls Account information such as x,y,z.
