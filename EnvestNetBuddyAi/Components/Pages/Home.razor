@@ -1,0 +1,197 @@
+﻿@page "/"
+@inject IJSRuntime JsRuntime
+@using MudBlazor
+@using EnvestNetBuddyAi.Components
+@using EnvestNetBuddyAi.Services
+@implements IDisposable
+
+<PageTitle>Home</PageTitle>
+
+<link href="app.css" rel="stylesheet" />
+
+<div class="app-container">
+    <!-- Robot Display -->
+    <div class="robot-display">
+        <img src="@_currentRobotImage"
+             alt="AI Buddy"
+             class="robot-image @(_isRobotActive ? "pulse-animation" : "")" />
+    </div>
+
+    <!-- Chat Interface -->
+    <div class="chat-interface">
+        <MudPaper Elevation="10" Class="pa-4" Style="height: 70vh; width: 100%;">
+            <div class="chat-header">
+                <MudText Typo="Typo.h6" Color="Color.Primary">Purple Pete Assistant</MudText>
+            </div>
+
+            <div class="messages-container" @ref="_messagesContainer">
+                @foreach (var message in _messages)
+                {
+                    <div class="@($"message {(message.Sender == "You" ? "user-message" : "bot-message")}")">
+                        @if (message.Sender != "You")
+                        {
+                            <div class="message-avatar">
+                                <img src="/avatars/PurpleRobot.png" width="40" />
+                            </div>
+                        }
+                        <MudPaper Elevation="1" Class="message-bubble pa-3">
+                            <MudText>@message.Text</MudText>
+                        </MudPaper>
+                    </div>
+                }
+
+                @if (_isTyping)
+                {
+                    <div class="message bot-message">
+                        <div class="message-avatar">
+                            <img src="/avatars/PurpleRobotTalking.png" width="40" />
+                        </div>
+                        <MudPaper Elevation="1" Class="message-bubble pa-3 typing-bubble">
+                            <div class="typing-animation">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </MudPaper>
+                    </div>
+                }
+            </div>
+
+            <div class="input-container">
+                <MudTextField @bind-Value="_currentMessage"
+                    Variant="Variant.Outlined"
+                    FullWidth="true"
+                    Placeholder="Ask me anything..."
+                    Immediate="true"
+                    Lines="1"
+                    Adornment="Adornment.End"
+                    AdornmentIcon="@Icons.Material.Filled.Send"
+                    OnAdornmentClick="SendMessage"
+                    OnKeyDown="@OnKeyDown"
+                    @ref="_messageInputRef" />
+            </div>
+        </MudPaper>
+    </div>
+</div>
+
+@code {
+    private List<ChatMessage> _messages = new();
+    private string _currentMessage = string.Empty;
+    private bool _isTyping = false;
+    private bool _isRobotActive = false;
+    private string _currentRobotImage = "/avatars/PurpleRobot.png";
+    private Timer? _typingTimer;
+    private int _responseIndex = 0;
+    private string _pendingResponse = "At the moment we are under maintenance...";
+    private string _confluenceContent = string.Empty;
+
+    private ElementReference _messagesContainer;
+    private MudTextField<string>? _messageInputRef;
+
+    [Inject] private ConfluenceService ConfluenceService { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _messages.Add(new ChatMessage(
+            "Purple Pete",
+            "Hi! My name is Purple Pete and I'm here to help!",
+            "/avatars/PurpleRobot.png"
+        ));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JsRuntime.InvokeVoidAsync("eval", @"
+                window.scrollToBottom = (element) => {
+                    if (element) {
+                        element.scrollTop = element.scrollHeight;
+                    }
+                };
+            ");
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_currentMessage) || _isTyping)
+            return;
+
+        var userMessage = _currentMessage;
+        _messages.Add(new ChatMessage("You", userMessage, null));
+        _currentMessage = string.Empty;
+        await ScrollToBottom();
+        await Task.Delay(100);
+
+        _isTyping = true;
+        _isRobotActive = true;
+        _currentRobotImage = "/avatars/PurpleRobotTalking.png";
+        _responseIndex = 0;
+
+        StateHasChanged();
+
+        _typingTimer?.Dispose();
+        _typingTimer = new Timer(async _ => await TypeOutBotResponse(), null, 100, 60);
+    }
+
+    private async Task TypeOutBotResponse()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_responseIndex < _pendingResponse.Length)
+            {
+                var currentText = _pendingResponse.Substring(0, _responseIndex + 1);
+
+                // Remove existing bot message if needed
+                if (_messages.LastOrDefault()?.Sender == "Purple Pete")
+                {
+                    _messages.RemoveAt(_messages.Count - 1);
+                }
+
+                _messages.Add(new ChatMessage(
+                    "Purple Pete",
+                    currentText,
+                    "/avatars/PurpleRobotTalking.png"
+                ));
+
+                _responseIndex++;
+                StateHasChanged();
+                await ScrollToBottom();
+            }
+            else
+            {
+                _typingTimer?.Dispose();
+                _isTyping = false;
+                _isRobotActive = false;
+                _currentRobotImage = "/avatars/PurpleRobot.png";
+                StateHasChanged();
+            }
+        });
+    }
+
+    private async Task ScrollToBottom()
+    {
+        await Task.Delay(50);
+        await JsRuntime.InvokeVoidAsync("scrollToBottom", _messagesContainer);
+    }
+
+    public async Task FetchConfluenceData()
+    {
+        _confluenceContent = await ConfluenceService.GetPageContent();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _typingTimer?.Dispose();
+    }
+}
